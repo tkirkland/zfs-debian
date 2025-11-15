@@ -3,19 +3,16 @@
 ## TL;DR
 
 ```bash
-# 1. Boot from Linux Live ISO with ZFS support
-# 2. Install dependencies
-sudo apt-get update && sudo apt-get install -y zfsutils-linux gdisk dosfstools squashfs-tools
-
-# 3. Run the installer
+# 1. Boot from any Linux Live ISO (Debian, Ubuntu, Fedora, Arch, etc.)
+# 2. Run the installer (dependencies auto-install)
 sudo bash install-to-zfs-raid.sh
 ```
 
 ## What You Need
 
 1. **At least 3 identical disks** (SSD or HDD)
-2. **Linux Live USB/ISO** (Debian, Ubuntu, or similar with ZFS support)
-3. **Network connection** (to install packages if needed)
+2. **Linux Live USB/ISO** (Debian, Ubuntu, Fedora, Arch, or similar)
+3. **Network connection** (for automatic dependency installation)
 4. **Backup of any important data** (disks will be wiped!)
 
 ## Installation Steps
@@ -31,14 +28,7 @@ Open a terminal and become root:
 sudo -i
 ```
 
-### 3. Install Required Packages
-
-```bash
-apt-get update
-apt-get install -y zfsutils-linux gdisk dosfstools squashfs-tools grub-efi-amd64
-```
-
-### 4. Download/Copy Script
+### 3. Download/Copy Script
 
 If you have the script on a USB drive:
 ```bash
@@ -52,19 +42,24 @@ Or download it (if you have internet):
 # Copy from your source
 ```
 
-### 5. Make Executable
+### 4. Make Executable
 
 ```bash
 chmod +x install-to-zfs-raid.sh
 ```
 
-### 6. Run Installer
+### 5. Run Installer
 
 ```bash
 ./install-to-zfs-raid.sh
 ```
 
-### 7. Follow Prompts
+The script will automatically:
+- Detect your package manager
+- Install any missing dependencies (ZFS tools, GRUB, etc.)
+- Then proceed with the installation
+
+### 6. Follow Prompts
 
 The script will ask you to:
 - Select disks (choose at least 3)
@@ -73,14 +68,14 @@ The script will ask you to:
 - Provide squashfs path (usually `/run/live/medium/live/filesystem.squashfs`)
 - Set root password
 
-### 8. Wait for Completion
+### 7. Wait for Completion
 
 The installation will take 10-30 minutes depending on:
 - System size
 - Disk speed
 - Number of disks
 
-### 9. Reboot
+### 8. Reboot
 
 ```bash
 reboot
@@ -133,9 +128,14 @@ Installation Complete!
 ## Common Issues
 
 ### "Command not found: zfs"
-Install zfsutils-linux:
+This should not happen with v1.1.0+ as dependencies are auto-installed. If it does:
+- Ensure you have an internet connection
+- The script will automatically attempt to install zfsutils-linux
+- If auto-install fails, manually install:
 ```bash
-apt-get install zfsutils-linux
+apt-get install zfsutils-linux  # Debian/Ubuntu
+dnf install zfs                 # Fedora
+pacman -S zfs-utils            # Arch
 ```
 
 ### "Cannot find squashfs file"

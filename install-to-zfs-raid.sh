@@ -16,7 +16,7 @@ set -u  # Exit on undefined variable
 # CONFIGURATION VARIABLES
 #=============================================================================
 
-SCRIPT_VERSION="1.0.0"
+SCRIPT_VERSION="1.1.0"
 LOG_FILE="/tmp/zfs-install-$(date +%Y%m%d-%H%M%S).log"
 POOL_NAME="rpool"
 BOOT_POOL_NAME="bpool"
@@ -84,30 +84,199 @@ check_root() {
     fi
 }
 
+detect_package_manager() {
+    if command -v apt-get &> /dev/null; then
+        echo "apt"
+    elif command -v dnf &> /dev/null; then
+        echo "dnf"
+    elif command -v yum &> /dev/null; then
+        echo "yum"
+    elif command -v pacman &> /dev/null; then
+        echo "pacman"
+    elif command -v zypper &> /dev/null; then
+        echo "zypper"
+    else
+        echo "unknown"
+    fi
+}
+
+get_package_for_command() {
+    local cmd=$1
+    local pkg_mgr=$2
+    local boot_mode=$3
+
+    # Map commands to packages based on package manager
+    case "$pkg_mgr" in
+        apt)
+            case "$cmd" in
+                zfs|zpool) echo "zfsutils-linux" ;;
+                sgdisk) echo "gdisk" ;;
+                mkfs.vfat) echo "dosfstools" ;;
+                unsquashfs) echo "squashfs-tools" ;;
+                grub-install)
+                    if [[ "$boot_mode" == "UEFI" ]]; then
+                        echo "grub-efi-amd64"
+                    else
+                        echo "grub-pc"
+                    fi
+                    ;;
+                chroot) echo "coreutils" ;;
+                *) echo "" ;;
+            esac
+            ;;
+        dnf|yum)
+            case "$cmd" in
+                zfs|zpool) echo "zfs" ;;
+                sgdisk) echo "gdisk" ;;
+                mkfs.vfat) echo "dosfstools" ;;
+                unsquashfs) echo "squashfs-tools" ;;
+                grub-install)
+                    if [[ "$boot_mode" == "UEFI" ]]; then
+                        echo "grub2-efi-x64"
+                    else
+                        echo "grub2-pc"
+                    fi
+                    ;;
+                chroot) echo "coreutils" ;;
+                *) echo "" ;;
+            esac
+            ;;
+        pacman)
+            case "$cmd" in
+                zfs|zpool) echo "zfs-utils" ;;
+                sgdisk) echo "gptfdisk" ;;
+                mkfs.vfat) echo "dosfstools" ;;
+                unsquashfs) echo "squashfs-tools" ;;
+                grub-install) echo "grub" ;;
+                chroot) echo "coreutils" ;;
+                *) echo "" ;;
+            esac
+            ;;
+        zypper)
+            case "$cmd" in
+                zfs|zpool) echo "zfs" ;;
+                sgdisk) echo "gptfdisk" ;;
+                mkfs.vfat) echo "dosfstools" ;;
+                unsquashfs) echo "squashfs-tools" ;;
+                grub-install)
+                    if [[ "$boot_mode" == "UEFI" ]]; then
+                        echo "grub2-x86_64-efi"
+                    else
+                        echo "grub2"
+                    fi
+                    ;;
+                chroot) echo "coreutils" ;;
+                *) echo "" ;;
+            esac
+            ;;
+        *)
+            echo ""
+            ;;
+    esac
+}
+
+install_package() {
+    local package=$1
+    local pkg_mgr=$2
+
+    log "Installing $package..."
+
+    case "$pkg_mgr" in
+        apt)
+            DEBIAN_FRONTEND=noninteractive apt-get update -qq
+            DEBIAN_FRONTEND=noninteractive apt-get install -y "$package"
+            ;;
+        dnf)
+            dnf install -y "$package"
+            ;;
+        yum)
+            yum install -y "$package"
+            ;;
+        pacman)
+            pacman -Sy --noconfirm "$package"
+            ;;
+        zypper)
+            zypper install -y "$package"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 check_requirements() {
     log "Checking system requirements..."
 
     local required_cmds=("zfs" "zpool" "sgdisk" "mkfs.vfat" "unsquashfs" "chroot" "grub-install")
     local missing_cmds=()
+    local pkg_mgr=$(detect_package_manager)
+    local boot_mode=$(check_uefi)
 
+    # First pass: identify missing commands
     for cmd in "${required_cmds[@]}"; do
         if ! command -v "$cmd" &> /dev/null; then
             missing_cmds+=("$cmd")
         fi
     done
 
-    if [[ ${#missing_cmds[@]} -gt 0 ]]; then
-        error "Missing required commands: ${missing_cmds[*]}"
-        info "Please install the required packages:"
-        info "  - zfsutils-linux (for zfs, zpool)"
-        info "  - gdisk (for sgdisk)"
-        info "  - dosfstools (for mkfs.vfat)"
-        info "  - squashfs-tools (for unsquashfs)"
-        info "  - grub-efi-amd64 or grub-pc"
+    if [[ ${#missing_cmds[@]} -eq 0 ]]; then
+        log "All required commands found"
+        return 0
+    fi
+
+    # Attempt to install missing packages
+    warn "Missing commands: ${missing_cmds[*]}"
+
+    if [[ "$pkg_mgr" == "unknown" ]]; then
+        error "Unable to detect package manager"
+        error "Please manually install packages for: ${missing_cmds[*]}"
+        die "Cannot auto-install dependencies"
+    fi
+
+    log "Detected package manager: $pkg_mgr"
+    log "Attempting to install missing dependencies..."
+
+    # Track packages we've already tried to install
+    local -A installed_packages
+
+    for cmd in "${missing_cmds[@]}"; do
+        local package=$(get_package_for_command "$cmd" "$pkg_mgr" "$boot_mode")
+
+        if [[ -z "$package" ]]; then
+            warn "Unknown package for command: $cmd"
+            continue
+        fi
+
+        # Skip if we've already installed this package
+        if [[ -n "${installed_packages[$package]:-}" ]]; then
+            continue
+        fi
+
+        info "Installing package: $package (provides $cmd)"
+
+        if install_package "$package" "$pkg_mgr"; then
+            log "Successfully installed $package"
+            installed_packages[$package]=1
+        else
+            error "Failed to install $package"
+        fi
+    done
+
+    # Second pass: verify all commands are now available
+    local still_missing=()
+    for cmd in "${required_cmds[@]}"; do
+        if ! command -v "$cmd" &> /dev/null; then
+            still_missing+=("$cmd")
+        fi
+    done
+
+    if [[ ${#still_missing[@]} -gt 0 ]]; then
+        error "Still missing required commands after installation attempt: ${still_missing[*]}"
+        info "Please manually install the required packages and try again"
         die "Missing required dependencies"
     fi
 
-    log "All required commands found"
+    log "All required commands are now available"
 }
 
 check_uefi() {

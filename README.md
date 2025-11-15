@@ -6,6 +6,8 @@ A comprehensive bash script for installing a Linux live ISO (squashfs) to a ZFS 
 
 - **RAID-Z1 Support**: Install Linux on a ZFS RAID-Z1 array (minimum 3 disks)
 - **UEFI and BIOS Support**: Works with both modern UEFI and legacy BIOS systems
+- **Auto-Dependency Installation**: Automatically detects and installs missing prerequisites
+- **Multi-Distro Support**: Works with Debian, Ubuntu, Fedora, RHEL, Arch, openSUSE
 - **Automated Partitioning**: Automatically partitions disks with proper layouts
 - **Dual Pool Design**: Separate boot pool (mirror) and root pool (RAID-Z1) for reliability
 - **Bootloader Installation**: Configures GRUB with ZFS support
@@ -14,52 +16,62 @@ A comprehensive bash script for installing a Linux live ISO (squashfs) to a ZFS 
 
 ## Prerequisites
 
-### Required Packages
-
-The script requires the following packages to be installed:
-
-```bash
-# Debian/Ubuntu
-apt-get install -y \
-    zfsutils-linux \
-    gdisk \
-    dosfstools \
-    squashfs-tools \
-    grub-efi-amd64  # or grub-pc for BIOS systems
-```
-
 ### System Requirements
 
 - **Minimum 3 disks** for RAID-Z1 (more disks recommended for better redundancy)
-- Running from a **Linux live environment** with ZFS support
+- Running from a **Linux live environment**
 - Root/sudo access
+- Internet connection (for automatic package installation)
 - Sufficient RAM (4GB+ recommended)
+
+### Required Packages (Auto-Installed)
+
+The script **automatically detects and installs** missing dependencies using your system's package manager:
+
+| Package Manager | Distributions | Auto-Install Support |
+|----------------|---------------|---------------------|
+| apt | Debian, Ubuntu, Linux Mint | ✅ Yes |
+| dnf | Fedora 22+ | ✅ Yes |
+| yum | RHEL, CentOS, Fedora <22 | ✅ Yes |
+| pacman | Arch Linux, Manjaro | ✅ Yes |
+| zypper | openSUSE, SLES | ✅ Yes |
+
+**Packages installed automatically:**
+- ZFS utilities (zfsutils-linux, zfs, zfs-utils)
+- Partitioning tools (gdisk/gptfdisk)
+- Filesystem tools (dosfstools)
+- SquashFS tools (squashfs-tools)
+- GRUB bootloader (grub-efi-amd64, grub-pc, or grub2)
+
+**Note:** If automatic installation fails or you're on an unsupported distribution, you'll need to manually install the required packages before running the script.
 
 ## Usage
 
 ### Basic Usage
 
-1. Boot into a Linux live environment (Debian, Ubuntu, etc.)
-2. Install required packages (if not already available)
-3. Download or copy the script to the live system
-4. Make it executable: `chmod +x install-to-zfs-raid.sh`
-5. Run as root: `sudo ./install-to-zfs-raid.sh`
+1. Boot into a Linux live environment (Debian, Ubuntu, Fedora, Arch, etc.)
+2. Download or copy the script to the live system
+3. Make it executable: `chmod +x install-to-zfs-raid.sh`
+4. Run as root: `sudo ./install-to-zfs-raid.sh`
+5. The script will automatically detect and install any missing dependencies
 
 ### Step-by-Step Example
 
 ```bash
-# Boot from Debian/Ubuntu Live ISO
-
-# Install dependencies
-sudo apt-get update
-sudo apt-get install -y zfsutils-linux gdisk dosfstools squashfs-tools
+# Boot from Linux Live ISO
 
 # Make script executable
 chmod +x install-to-zfs-raid.sh
 
-# Run the installer
+# Run the installer (it will auto-install dependencies)
 sudo ./install-to-zfs-raid.sh
 ```
+
+The script will:
+- Detect your package manager (apt, dnf, yum, pacman, or zypper)
+- Check for required commands (zfs, sgdisk, mkfs.vfat, etc.)
+- Automatically install any missing packages
+- Proceed with the installation once all dependencies are satisfied
 
 The script will guide you through:
 1. Disk selection (select at least 3 disks)
